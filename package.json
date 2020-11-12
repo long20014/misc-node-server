@@ -1,0 +1,21 @@
+{
+  "name": "misc-node-server",
+  "version": "1.0.0",
+  "description": "misc node server",
+  "main": "server.js",
+  "scripts": {
+    "test": "test",
+    "start": "nodemon --inspect server.js"
+  },
+  "keywords": [
+    "server misc-server nodejs"
+  ],
+  "author": "long20014",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "nodemon": "^2.0.6",
+    "puppeteer": "^5.4.1"
+  }
+}
