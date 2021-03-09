@@ -1,24 +1,30 @@
-var express = require('express');
-var https = require('https');
-var cors = require('cors')
-var querystring = require('querystring');
+const express = require('express');
+const https = require('https');
+const cors = require('cors')
+const querystring = require('querystring');
 const puppeteer = require("puppeteer");
+const fetch = require('node-fetch');
+const redis = require('redis');
+const router = express.Router();
+const bodyParser = require('body-parser')
+const FormData = require('form-data');
 
+const app = express();
+const REDIS_PORT = process.env.PORT || 6379
+const PORT = process.env.PORT || 3000;
 
-var app = express();
+const client = redis.createClient(REDIS_PORT)
 
-var PORT = 3000;
+//Here we are configuring express to use body-parser as middle-ware.
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
 
-// var server = http.createServer(function(req, res) {
-//     res.writeHead(200, { "Content-type": "text/plain" });
-//     res.end("Hello world\n");
-// });
-
-// app.use(cors());
-var corsOptions = {
+const corsOptions = {
   origin: 'http://127.0.0.1:8080',
   optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
 }
+
+app.get('/repos/:username', cache, getRepos);    
 
 app.get('/', cors(corsOptions), function(req, res) {	
 	// crawlWebData(res);
@@ -53,35 +59,97 @@ app.get('/', cors(corsOptions), function(req, res) {
  //    requ.end();
 })
 
+app.post('/youtube', cors(corsOptions), async function(req, res) {		
+	let result = await getYoutubeVideoSrc(req.body.url);
+    if (result.status === 'wait') {
+        result = await getYoutubeVideoSrc(req.body.url);
+    }
+    if (result.status === 'wait') {
+        result = await getYoutubeVideoSrc(req.body.url);
+    }
+    res.status(200).send(result);	
+})
+
 app.listen(PORT, function() {
     console.log('Server is running at 3000')
 });
 
+async function getRepos(req, res, next) {
+    try {
+        console.log('Fetching data...')
+        const { username } = req.params;
+        const response = await fetch(`https://api.github.com/users/${username}`);
+        const data = await response.json();
+        const repos = data.public_repos;
+        // set data to Redis
+        client.setex(username, 3600, repos)  
+        res.send(setResponse(username, repos));
+
+    } catch (err) {
+        console.error(err);
+        res.status(500);
+    }
+}
+
+// Cache middleware
+function cache(req, res, next) {
+    const {username} = req.params;
+
+    client.get(username, (err, data) => {
+        if (err) throw err;
+        if (data !== null) {
+            res.send(setResponse(username, data));
+        } else {
+            next();
+        }
+    })
+}
+
+function setResponse(username, repos) {
+    return `<h2>${username} has ${repos} Github repos</h2>`
+}
 
 var crawlWebData = async (res) => {	
     debugger
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
-    await page.goto("https://www.nhaccuatui.com/bai-hat/top-20.html");
-    const songs = await page.evaluate(() => {        
-        let items = document.querySelectorAll(".name_song");
-        let links = [];
-        items.forEach(item => {
-            links.push({
-                title: item.innerText,
-                url: item.getAttribute("href")
+    try {
+        const browser = await puppeteer.launch();
+        const page = await browser.newPage();
+        await page.goto("https://www.nhaccuatui.com/bai-hat/top-20.html");
+        const songs = await page.evaluate(() => {        
+            let items = document.querySelectorAll(".name_song");
+            let links = [];
+            items.forEach(item => {
+                links.push({
+                    title: item.innerText,
+                    url: item.getAttribute("href")
+                });
             });
+            return links;
         });
-        return links;
-    });
-    console.log(songs);
-    res.status(200).send(songs);
-    await browser.close();
+        console.log(songs);
+        res.status(200).send(songs);
+        await browser.close();
+    } catch (err) {
+        console.error(err)
+        res.status(500);
+    }    
+}
+
+async function getYoutubeVideoSrc(youtubeLink) {    
+    let formData = new FormData();
+    formData.append('url', youtubeLink);
+    formData.append('action', 'homePure');
+    
+    const url = 'https://en.fetchfile.net/fetch/'
+    const response = await fetch(url, {
+        method: 'POST',        
+        body: formData // body data type must match "Content-Type" header
+    })
+    return response.json();
 }
 
 
-
-var crawlWebDataVietlott = async (res) => {	
+async function crawlWebDataVietlott(res) {	
     // puppeteer options: {headless: false}, {devtools: true}
     let result = []
     const browser = await puppeteer.launch({headless: false});
