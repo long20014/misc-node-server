@@ -59,14 +59,23 @@ app.get('/', cors(corsOptions), function(req, res) {
  //    requ.end();
 })
 
+async function fetchRecursive(url, count) {
+    if (count > 5) return {};
+    count++;
+    let result = await getYoutubeVideoSrc(url);
+    if (result.status === 'wait') {
+        return fetchRecursive(url, count) 
+    } else {
+        return result;
+    }    
+}
+
 app.post('/youtube', cors(corsOptions), async function(req, res) {		
-	let result = await getYoutubeVideoSrc(req.body.url);
-    if (result.status === 'wait') {
-        result = await getYoutubeVideoSrc(req.body.url);
-    }
-    if (result.status === 'wait') {
-        result = await getYoutubeVideoSrc(req.body.url);
-    }
+	let result = await fetchRecursive(req.body.url, 0);
+    // if (result.status === 'wait') {
+    //     result = await getYoutubeVideoSrc(req.body.url)
+    // }
+    
     res.status(200).send(result);	
 })
 
