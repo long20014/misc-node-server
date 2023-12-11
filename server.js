@@ -1,34 +1,50 @@
-const express = require('express');
-const https = require('https');
-const cors = require('cors');
-const querystring = require('querystring');
-const puppeteer = require('puppeteer');
-const fetch = require('node-fetch');
+import express, { Router } from 'express';
+import https from 'https';
+import cors from 'cors';
+import querystring from 'querystring';
+import fetch from 'node-fetch';
 // const redis = require('redis');
-const router = express.Router();
-const bodyParser = require('body-parser');
-const FormData = require('form-data');
+const router = Router();
+import pkg from 'body-parser';
+const { urlencoded, json } = pkg;
+import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import FormData from 'form-data';
+import Chat from './modules/chat-module/chatModule.js';
+import VietlottModule from './modules/vietlott-module/vietlottModule.js';
 
 const app = express();
+const server = createServer(app);
+
 // const REDIS_PORT = process.env.PORT || 6379
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 // const client = redis.createClient(REDIS_PORT)
 
 //Here we are configuring express to use body-parser as middle-ware.
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+app.use(urlencoded({ extended: false }));
+app.use(json());
 
 const corsOptions = {
   origin: 'http://127.0.0.1:8080',
   optionsSuccessStatus: 200, // some legacy browsers (IE11, various SmartTVs) choke on 204
 };
 
+server.listen(PORT, function () {
+  console.log(`Server is running at ${PORT}`);
+  const chatApp = new Chat(server);
+  chatApp.initSocketIo();
+});
+
 // app.get('/repos/:username', cache, getRepos);
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 app.get('/', cors(corsOptions), function (req, res) {
+  res.sendFile(join(__dirname, 'index.html'));
   // crawlWebData(res);
-  crawlWebDataVietlott(res);
+  // VietlottModule.crawlWebDataVietlott(res);
 
   // NCTInfo = {ROOT_URL: "https://www.nhaccuatui.com/", mineKey: ""}
   // var songKey = "gv8GB8rRmZU6";
@@ -74,10 +90,6 @@ app.post('/youtube', cors(corsOptions), async function (req, res) {
   res.status(200).send(result);
 });
 
-app.listen(PORT, function () {
-  console.log('Server is running at 3000');
-});
-
 // async function getRepos(req, res, next) {
 //     try {
 //         console.log('Fetching data...')
@@ -113,10 +125,10 @@ function setResponse(username, repos) {
   return `<h2>${username} has ${repos} Github repos</h2>`;
 }
 
-var crawlWebData = async (res) => {
+async function crawlWebData(res) {
   debugger;
   try {
-    const browser = await puppeteer.launch();
+    const browser = await launch();
     const page = await browser.newPage();
     await page.goto('https://www.nhaccuatui.com/bai-hat/top-20.html');
     const songs = await page.evaluate(() => {
@@ -137,7 +149,7 @@ var crawlWebData = async (res) => {
     console.error(err);
     res.status(500);
   }
-};
+}
 
 async function getYoutubeVideoSrc(youtubeLink) {
   let formData = new FormData();
@@ -150,64 +162,4 @@ async function getYoutubeVideoSrc(youtubeLink) {
     body: formData, // body data type must match "Content-Type" header
   });
   return response.json();
-}
-
-async function crawlWebDataVietlott(res) {
-  // puppeteer options: {headless: false}, {devtools: true}
-  let result = [];
-  const browser = await puppeteer.launch({ headless: false });
-  const page = await browser.newPage();
-  await page.goto(
-    'https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-655.html'
-  );
-  let canGoNextPage = true;
-  let pageIndex = 1;
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  while (canGoNextPage) {
-    const evalResult = await page.evaluate(
-      (pageIndex, canGoNextPage) => {
-        const getNextPageButton = (pageIndex) => {
-          const nextPageButtons = document.querySelectorAll(
-            "[href='javascript:NextPage(" + pageIndex + ");']"
-          );
-          const length = nextPageButtons.length;
-          return nextPageButtons[length - 1];
-        };
-        let resultList = [];
-        let resultLines = document.querySelectorAll(
-          '.doso_output_nd .day_so_ket_qua_v2'
-        );
-        for (resultLine of resultLines) {
-          const resultNumbers = [];
-          for (let i = 0; i < 8; i++) {
-            if (i !== 6) {
-              resultNumbers.push(resultLine.children[i].innerHTML);
-            }
-          }
-          resultList.push(resultNumbers);
-        }
-        console.log(getNextPageButton(pageIndex));
-        if (getNextPageButton(pageIndex)) {
-          const href = 'javascript:NextPage(' + pageIndex + ')';
-          window.location.href = href;
-          pageIndex++;
-          console.log(pageIndex);
-        } else {
-          canGoNextPage = false;
-        }
-        return { resultList, canGoNextPage, pageIndex };
-      },
-      pageIndex,
-      canGoNextPage
-    );
-
-    canGoNextPage = evalResult.canGoNextPage;
-    pageIndex = evalResult.pageIndex;
-    result.push(evalResult.resultList);
-    await wait(1000);
-  }
-  result = result.flat(1);
-  console.log(result);
-  res.status(200).send(result);
-  await browser.close();
 }
